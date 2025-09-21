@@ -1,15 +1,12 @@
-# This is the full, updated content for backend/app/streaming.py
-
 import asyncio
 import random
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from datetime import datetime
-
-# --- FIX: Import from the central data loader ---
-from .data_loader import combined_df, DATA_LENGTH
+from .data_loader import combined_data, DATA_LENGTH
 
 router = APIRouter()
 
+# (generate_log_message function remains the same)
 def generate_log_message(data_row):
     timestamp = datetime.now().isoformat()
     thresholds = {
@@ -17,10 +14,8 @@ def generate_log_message(data_row):
         "co2": {"warn": 18, "alert": 22},
         "clinker_quality": {"warn": 38, "alert": 35}
     }
-
     if data_row["spc"] > thresholds["spc"]["alert"]:
         return {"id": timestamp, "level": "Alert", "message": f"Critical SPC: {data_row['spc']:.1f} kWh/t!"}
-    # ... (rest of the log generation logic is the same)
     if data_row["co2"] > thresholds["co2"]["alert"]:
         return {"id": timestamp, "level": "Alert", "message": f"Critical CO₂: {data_row['co2']:.2f} t/t!"}
     if data_row["clinker_quality"] < thresholds["clinker_quality"]["alert"]:
@@ -35,6 +30,7 @@ def generate_log_message(data_row):
         return {"id": timestamp, "level": "Info", "message": f"System stable. TSR: {data_row['tsr']:.1f}%."}
     return None
 
+
 @router.websocket("/ws/live_data")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
@@ -43,9 +39,10 @@ async def websocket_endpoint(websocket: WebSocket):
     try:
         while True:
             if DATA_LENGTH > 0:
-                data_row = combined_df.iloc[current_index]
+                data_row = combined_data[current_index]
                 log_message = generate_log_message(data_row)
-                payload = {"kpi_data": data_row.to_dict(), "log_entry": log_message}
+                # data_row is already a dictionary, no .to_dict() needed
+                payload = {"kpi_data": data_row, "log_entry": log_message}
                 await websocket.send_json(payload)
                 current_index = (current_index + 1) % DATA_LENGTH
                 await asyncio.sleep(5)

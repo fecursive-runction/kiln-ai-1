@@ -1,93 +1,42 @@
-# data/transform_data.py
-# This script reads the raw data from the Kaggle dataset, synthesizes missing KPIs,
-# and saves the processed data into the four separate CSV files required by the project.
+import csv
+from pathlib import Path
 
-import pandas as pd
-import numpy as np
+print("Attempting to load data using csv module...")
+DATA_PATH = Path(__file__).resolve().parent.parent.parent / "data"
 
-# --- Configuration ---
-RAW_DATA_PATH = "data/cement_manufacturing_dataset.csv"
-OUTPUT_DIR = "."  # Use the current directory, which is the 'data' folder
+combined_data = []
+DATA_LENGTH = 0
 
-def transform_and_save_data():
-    """
-    Reads the raw data, synthesizes new KPIs, and saves them to the
-    project's specific CSV files.
-    """
-    print("Starting data transformation...")
-
-    try:
-        # 1. Read the raw Kaggle dataset
-        # The engine is set to 'python' to handle potential parsing issues with the CSV
-        df = pd.read_csv(RAW_DATA_PATH, engine='python')
-        print(f"Successfully loaded raw data from '{RAW_DATA_PATH}'. Shape: {df.shape}\n")
-
-        # --- IMPORTANT: The following column mapping is based on your specific CSV file ---
-        column_mapping = {
-            'strength': 'clinker_quality',
-            'cement': 'cement',
-            'slag': 'blast_furnace_slag',
-            'fly_ash': 'fly_ash',
-            'water': 'water',
-            'superplastic': 'superplasticizer',
-            'coarseagg': 'coarse_aggregate',
-            'fineagg': 'fine_aggregate',
-            'age': 'age'
+try:
+    # Read all csv files and store their data
+    clinker_data = list(csv.DictReader((DATA_PATH / "clinker.csv").open()))
+    energy_data = list(csv.DictReader((DATA_PATH / "energy.csv").open()))
+    fuel_mix_data = list(csv.DictReader((DATA_PATH / "fuel_mix.csv").open()))
+    
+    # Combine the data row by row
+    for i in range(len(clinker_data)):
+        combined_row = {
+            **clinker_data[i],
+            **energy_data[i],
+            **fuel_mix_data[i],
         }
-
-        # Rename columns using the mapping
-        df.rename(columns=column_mapping, inplace=True)
+        # Convert numeric values from string to float
+        for key, value in combined_row.items():
+            if key != 'timestamp':
+                try:
+                    combined_row[key] = float(value)
+                except (ValueError, TypeError):
+                    pass # Keep as string if conversion fails
         
-        # 3. Add a timestamp column to simulate time-series data
-        date_range = pd.date_range(start='2022-01-01', periods=len(df), freq='H')
-        df.insert(0, 'timestamp', date_range)
+        combined_data.append(combined_row)
 
-        # 4. Synthesize missing KPIs based on the available data
-        
-        # Synthesize SPC (Specific Power Consumption) as a function of cement and water
-        # This is a mock formula to create a realistic-looking time series.
-        df['spc'] = 800 + (df['cement'] * 0.2) + (df['water'] * 0.1) + np.random.normal(0, 5, len(df))
-        df['spc'] = df['spc'].round(2)
-
-        # Synthesize TSR (Thermal Substitution Rate) as a randomized value
-        df['tsr'] = np.random.uniform(20, 35, len(df)).round(2)
-        
-        # Synthesize CO2 emissions based on cement and fly ash amounts
-        df['co2'] = (df['cement'] * 0.05 + df['fly_ash'] * 0.01 + np.random.normal(0, 0.01, len(df))).round(3)
-        
-        # Synthesize a mock 'coal_feed_rate' and 'airflow' for utilities.csv
-        df['coal_feed_rate'] = (np.random.uniform(10, 15, len(df)) + (df['spc'] / 100)).round(2)
-        df['airflow'] = (np.random.uniform(500, 600, len(df)) - (df['tsr'] * 2)).round(2)
-
-        # --- 5. Save the data to the specific CSV files ---
-
-        # clinker.csv: timestamp, clinker_quality
-        clinker_df = df[['timestamp', 'clinker_quality']]
-        clinker_df.to_csv(f'{OUTPUT_DIR}/clinker.csv', index=False)
-        print(f"Generated 'clinker.csv'. Shape: {clinker_df.shape}")
-
-        # energy.csv: timestamp, spc, co2
-        energy_df = df[['timestamp', 'spc', 'co2']]
-        energy_df.to_csv(f'{OUTPUT_DIR}/energy.csv', index=False)
-        print(f"Generated 'energy.csv'. Shape: {energy_df.shape}")
-
-        # fuel_mix.csv: timestamp, tsr
-        fuel_mix_df = df[['timestamp', 'tsr']]
-        fuel_mix_df.to_csv(f'{OUTPUT_DIR}/fuel_mix.csv', index=False)
-        print(f"Generated 'fuel_mix.csv'. Shape: {fuel_mix_df.shape}")
-
-        # utilities.csv: timestamp, coal_feed_rate, airflow
-        utilities_df = df[['timestamp', 'coal_feed_rate', 'airflow']]
-        utilities_df.to_csv(f'{OUTPUT_DIR}/utilities.csv', index=False)
-        print(f"Generated 'utilities.csv'. Shape: {utilities_df.shape}")
-
-        print("\nAll data files have been successfully generated.")
-
-    except FileNotFoundError:
-        print(f"Error: The file '{RAW_DATA_PATH}' was not found.")
-        print("Please ensure you have downloaded the dataset and placed it in the 'data' directory.")
-    except Exception as e:
-        print(f"An unexpected error occurred: {e}")
-
-if __name__ == "__main__":
-    transform_and_save_data()
+    DATA_LENGTH = len(combined_data)
+    print("Data loaded and combined successfully!")
+except FileNotFoundError as e:
+    print(f"Error: Data file not found. {e}")
+    combined_data = []
+    DATA_LENGTH = 0
+except Exception as e:
+    print(f"An error occurred during data loading: {e}")
+    combined_data = []
+    DATA_LENGTH = 0
